@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">QuizyEasy</string>
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="good">GOOD</string>
+    <string name="excellent">EXCELLENT</string>
+    <string name="bad">BAD</string>
+</resources>
