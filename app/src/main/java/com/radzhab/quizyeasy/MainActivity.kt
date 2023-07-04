@@ -2,6 +2,12 @@ package com.radzhab.quizyeasy
 
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.util.Log
+import android.view.View
+import android.webkit.CookieManager
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -9,6 +15,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentTransaction
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.google.firebase.remoteconfig.ktx.remoteConfig
+import com.google.firebase.remoteconfig.ktx.remoteConfigSettings
 import com.radzhab.quizyeasy.databinding.ActivityMainBinding
 import com.radzhab.quizyeasy.fragment.ResultFragment
 import com.radzhab.quizyeasy.model.QuestionModel
@@ -20,12 +30,15 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
+    private lateinit var webView: WebView
+
     var questionsList: ArrayList<QuestionModel> = ArrayList()
     private var index: Int = 0
     lateinit var questionModel: QuestionModel
 
     private var correctAnswerCount: Int = 0
     private var wrongAnswerCount: Int = 0
+    private var url = ""
 
     private var backPressedTime: Long = 0
     private var backToast: Toast? = null
@@ -36,7 +49,92 @@ class MainActivity : AppCompatActivity() {
         val view = binding.root
         setContentView(view)
         supportActionBar?.hide()
+        getConfig(savedInstanceState)
+        //TODO: check is local url exist
+    }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        webView.saveState(outState)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun getConfig(savedInstanceState: Bundle?) {
+        val remoteConfig: FirebaseRemoteConfig = Firebase.remoteConfig
+        val configSettings = remoteConfigSettings {
+            minimumFetchIntervalInSeconds = 3600
+        }
+        remoteConfig.setConfigSettingsAsync(configSettings)
+
+        //Default url value
+//        remoteConfig.setDefaultsAsync(R.xml.remote_config_defaults)
+
+        try {
+            remoteConfig.fetchAndActivate()
+                .addOnCompleteListener(this) { task ->
+                    if (task.isSuccessful) {
+                        val updated = task.result
+                        Log.d(TAG, "Config params updated: $updated")
+                        Toast.makeText(
+                            this,
+                            "Fetch and activate succeeded",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        url = remoteConfig.getString("url")
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Fetch failed",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    //TODO: check is Android or Emulator
+                    if (url.isEmpty()) {
+                        println("STARTPLUG")
+                        startPlug()
+                    } else{
+                        startWeb(url, savedInstanceState)
+                    }
+                    displayWelcomeMessage()
+                }
+        } catch (e:Exception){
+            //TODO: display the screen with the output - a network connection is required to continue
+            e.printStackTrace()
+        }
+    }
+
+    private fun displayWelcomeMessage() {
+        println("displayWelcomeMessage")
+    }
+
+    private fun startWeb(url: String, savedInstanceState: Bundle?) {
+        binding.mainWebView.visibility = View.VISIBLE
+        webView = binding.mainWebView
+        webView.webViewClient = WebViewClient()
+        val webSettings:WebSettings = webView.settings
+        webSettings.setJavaScriptEnabled(true)
+        if (savedInstanceState != null)
+            webView.restoreState(savedInstanceState)
+        else
+            webView.loadUrl(url)
+        binding.mainWebView.settings.domStorageEnabled = true
+        binding.mainWebView.settings.javaScriptCanOpenWindowsAutomatically = true
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        val mWebSettings = binding.mainWebView.settings
+        mWebSettings.javaScriptEnabled = true
+        mWebSettings.loadWithOverviewMode = true
+        mWebSettings.useWideViewPort = true
+        mWebSettings.domStorageEnabled = true
+        mWebSettings.databaseEnabled = true
+        mWebSettings.setSupportZoom(false)
+        mWebSettings.allowFileAccess = true
+        mWebSettings.allowContentAccess = true
+        mWebSettings.loadWithOverviewMode = true
+        mWebSettings.useWideViewPort = true
+    }
+
+
+    private fun startPlug(){
         onBackOverride()
         resetBackground()
         initQuestionList()
@@ -167,6 +265,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // TODO: configure for WebView
     private fun onBackOverride() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -257,6 +356,10 @@ class MainActivity : AppCompatActivity() {
             )
         )
         questionsList.shuffle()
+    }
+
+    companion object {
+        private const val TAG = "MyLog"
     }
 
 }

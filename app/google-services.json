@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "387711354482",
+    "project_id": "quizyeasy-84bae",
+    "storage_bucket": "quizyeasy-84bae.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:387711354482:android:27dea7e05a42ea44cba4eb",
+        "android_client_info": {
+          "package_name": "com.radzhab.quizyeasy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "387711354482-nvb1gi9bjqol159ka1qbfsscuqvssthu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.radzhab.quizyeasy",
+            "certificate_hash": "6350cfdd53ac8e1557fef1b2fb4bf13630b0a0d8"
+          }
+        },
+        {
+          "client_id": "387711354482-00tbsh07s1b62aprfgegkplrvi54hhv8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNZd31lOVF38kB39jZ2tTy00Li5Xpb8Xc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "387711354482-00tbsh07s1b62aprfgegkplrvi54hhv8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
