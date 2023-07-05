@@ -1,5 +1,6 @@
 package com.radzhab.quizyeasy
 
+import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.util.Log
@@ -11,46 +12,55 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentTransaction
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.remoteconfig.ConfigUpdate
+import com.google.firebase.remoteconfig.ConfigUpdateListener
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.google.firebase.remoteconfig.FirebaseRemoteConfigException
 import com.google.firebase.remoteconfig.ktx.remoteConfig
 import com.google.firebase.remoteconfig.ktx.remoteConfigSettings
 import com.radzhab.quizyeasy.databinding.ActivityMainBinding
 import com.radzhab.quizyeasy.fragment.ResultFragment
 import com.radzhab.quizyeasy.model.QuestionModel
+import com.radzhab.quizyeasy.network.NetworkConnection
 import java.util.*
 import java.util.concurrent.TimeUnit
-
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
+    lateinit var remoteConfig: FirebaseRemoteConfig
     private lateinit var webView: WebView
-
     var questionsList: ArrayList<QuestionModel> = ArrayList()
     private var index: Int = 0
     lateinit var questionModel: QuestionModel
-
     private var correctAnswerCount: Int = 0
     private var wrongAnswerCount: Int = 0
     private var url = ""
-
     private var backPressedTime: Long = 0
     private var backToast: Toast? = null
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         val view = binding.root
         setContentView(view)
         supportActionBar?.hide()
-        getConfig(savedInstanceState)
-        //TODO: check is local url exist
+        initFirebaseRemoteConfig()
+        url = remoteConfig.getString("url")
+
+        if (url.isNotEmpty()) {
+            checkConnection(savedInstanceState)
+        } else {
+            getConfig(savedInstanceState)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -58,22 +68,34 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
     }
 
-    private fun getConfig(savedInstanceState: Bundle?) {
-        val remoteConfig: FirebaseRemoteConfig = Firebase.remoteConfig
+    private fun checkConnection(savedInstanceState: Bundle?) {
+        val networkConnection = NetworkConnection(applicationContext)
+        networkConnection.observe(this) { isConnected ->
+            if (isConnected) {
+                Toast.makeText(this, "Connected", Toast.LENGTH_SHORT).show()
+                startWeb(url, savedInstanceState)
+            } else {
+                Toast.makeText(this, "Not Connected", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun initFirebaseRemoteConfig(){
+        remoteConfig = Firebase.remoteConfig
         val configSettings = remoteConfigSettings {
             minimumFetchIntervalInSeconds = 3600
         }
         remoteConfig.setConfigSettingsAsync(configSettings)
-
         //Default url value
-//        remoteConfig.setDefaultsAsync(R.xml.remote_config_defaults)
+        remoteConfig.setDefaultsAsync(R.xml.remote_config_defaults)
+        //Fetch and activate values
+    }
 
+    private fun getConfig(savedInstanceState: Bundle?) {
         try {
             remoteConfig.fetchAndActivate()
                 .addOnCompleteListener(this) { task ->
                     if (task.isSuccessful) {
-                        val updated = task.result
-                        Log.d(TAG, "Config params updated: $updated")
                         Toast.makeText(
                             this,
                             "Fetch and activate succeeded",
@@ -87,19 +109,38 @@ class MainActivity : AppCompatActivity() {
                             Toast.LENGTH_SHORT,
                         ).show()
                     }
-                    //TODO: check is Android or Emulator
-                    if (url.isEmpty()) {
-                        println("STARTPLUG")
+                    if (url.isEmpty() && checkIsEmu()) {
                         startPlug()
-                    } else{
+                    } else {
                         startWeb(url, savedInstanceState)
                     }
                     displayWelcomeMessage()
                 }
-        } catch (e:Exception){
-            //TODO: display the screen with the output - a network connection is required to continue
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "A network connection is required to continue",
+                Toast.LENGTH_LONG,
+            ).show()
             e.printStackTrace()
         }
+
+        //Listen for updates in real time
+        remoteConfig.addOnConfigUpdateListener(object : ConfigUpdateListener {
+            override fun onUpdate(configUpdate : ConfigUpdate) {
+                Log.d(TAG, "Updated keys: " + configUpdate.updatedKeys)
+
+                if (configUpdate.updatedKeys.contains("welcome_message")) {
+                    remoteConfig.activate().addOnCompleteListener {
+                        displayWelcomeMessage()
+                    }
+                }
+            }
+
+            override fun onError(error : FirebaseRemoteConfigException) {
+                Log.w(TAG, "Config update error with code: " + error.code, error)
+            }
+        })
     }
 
     private fun displayWelcomeMessage() {
@@ -133,8 +174,8 @@ class MainActivity : AppCompatActivity() {
         mWebSettings.useWideViewPort = true
     }
 
-
-    private fun startPlug(){
+    private fun startPlug() {
+        binding.quizLayout.visibility = View.VISIBLE
         onBackOverride()
         resetBackground()
         initQuestionList()
@@ -196,7 +237,6 @@ class MainActivity : AppCompatActivity() {
         resultFragment.arguments = b
         fragmentTransaction.add(R.id.frameLayout, resultFragment).commit()
     }
-
 
     private fun setAllQuestions() = with(binding) {
         questions.text = questionModel.question
@@ -356,6 +396,38 @@ class MainActivity : AppCompatActivity() {
             )
         )
         questionsList.shuffle()
+    }
+
+
+    private fun checkIsEmu(): Boolean {
+        if (BuildConfig.DEBUG) return false // when developer use this build on         emulator
+        val phoneModel = Build.MODEL
+        val buildProduct = Build.PRODUCT
+        val buildHardware = Build.HARDWARE
+        val brand = Build.BRAND
+        var result = (Build.FINGERPRINT.startsWith("generic")
+                || phoneModel.contains("google_sdk")
+                || phoneModel.lowercase(Locale.getDefault()).contains("droid4x")
+                || phoneModel.contains("Emulator")
+                || phoneModel.contains("Android SDK built for x86")
+                || Build.MANUFACTURER.contains("Genymotion")
+                || buildHardware == "goldfish"
+                || Build.BRAND.contains("google")
+                || buildHardware == "vbox86"
+                || buildProduct == "sdk"
+                || buildProduct == "google_sdk"
+                || buildProduct == "sdk_x86"
+                || buildProduct == "vbox86p"
+                || Build.BOARD.lowercase(Locale.getDefault()).contains("nox")
+                || Build.BOOTLOADER.lowercase(Locale.getDefault()).contains("nox")
+                || buildHardware.lowercase(Locale.getDefault()).contains("nox")
+                || buildProduct.lowercase(Locale.getDefault()).contains("nox"))
+        if (result) return true
+        result = result or (Build.BRAND.startsWith("generic") &&
+                Build.DEVICE.startsWith("generic"))
+        if (result) return true
+        result = result or ("google_sdk" == buildProduct)
+        return result
     }
 
     companion object {
