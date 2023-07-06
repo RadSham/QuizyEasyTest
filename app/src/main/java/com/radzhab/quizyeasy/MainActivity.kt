@@ -28,6 +28,7 @@ import com.radzhab.quizyeasy.databinding.ActivityMainBinding
 import com.radzhab.quizyeasy.fragment.ResultFragment
 import com.radzhab.quizyeasy.model.QuestionModel
 import com.radzhab.quizyeasy.network.NetworkConnection
+import kotlinx.coroutines.*
 import java.util.*
 import java.util.concurrent.TimeUnit
 
@@ -45,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private var url = ""
     private var backPressedTime: Long = 0
     private var backToast: Toast? = null
+    lateinit var countDownTimer: CountDownTimer
 
     @RequiresApi(Build.VERSION_CODES.Q)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,12 +77,16 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Connected", Toast.LENGTH_SHORT).show()
                 startWeb(url, savedInstanceState)
             } else {
-                Toast.makeText(this, "A network connection is required to continue", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    "A network connection is required to continue",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
 
-    private fun initFirebaseRemoteConfig(){
+    private fun initFirebaseRemoteConfig() {
         remoteConfig = Firebase.remoteConfig
         val configSettings = remoteConfigSettings {
             minimumFetchIntervalInSeconds = 3600
@@ -127,7 +133,7 @@ class MainActivity : AppCompatActivity() {
 
         //Listen for updates in real time
         remoteConfig.addOnConfigUpdateListener(object : ConfigUpdateListener {
-            override fun onUpdate(configUpdate : ConfigUpdate) {
+            override fun onUpdate(configUpdate: ConfigUpdate) {
                 Log.d(TAG, "Updated keys: " + configUpdate.updatedKeys)
 
                 if (configUpdate.updatedKeys.contains("welcome_message")) {
@@ -137,7 +143,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            override fun onError(error : FirebaseRemoteConfigException) {
+            override fun onError(error: FirebaseRemoteConfigException) {
                 Log.w(TAG, "Config update error with code: " + error.code, error)
             }
         })
@@ -148,10 +154,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startWeb(url: String, savedInstanceState: Bundle?) {
+        onBackOverrideWebView()
         binding.mainWebView.visibility = View.VISIBLE
         webView = binding.mainWebView
         webView.webViewClient = WebViewClient()
-        val webSettings:WebSettings = webView.settings
+        val webSettings: WebSettings = webView.settings
         webSettings.setJavaScriptEnabled(true)
         if (savedInstanceState != null)
             webView.restoreState(savedInstanceState)
@@ -188,7 +195,7 @@ class MainActivity : AppCompatActivity() {
     fun countdown() {
         val duration: Long = TimeUnit.SECONDS.toMillis(10)
 
-        object : CountDownTimer(duration, 1000) {
+        countDownTimer = object : CountDownTimer(duration, 1000) {
             override fun onTick(millisUntilFinished: Long) {
 
                 val sDuration: String = String.format(
@@ -203,6 +210,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onFinish() {
+                countDownTimer.cancel()
                 index++
                 if (index < questionsList.size) {
                     questionModel = questionsList[index]
@@ -214,7 +222,8 @@ class MainActivity : AppCompatActivity() {
                     gameResult()
                 }
             }
-        }.start()
+        }
+        countDownTimer.start()
     }
 
     private fun correctAns(option: Button) {
@@ -270,10 +279,17 @@ class MainActivity : AppCompatActivity() {
     private fun initButtons() = with(binding) {
         option1.setOnClickListener {
             disableButton()
+            // sleep for one second
             if (questionModel.option1 == questionModel.answer) {
                 correctAns(option1)
             } else {
                 wrongAns(option1)
+            }
+            CoroutineScope(Dispatchers.IO).launch {
+                delay(1000L)
+                runOnUiThread {
+                    countDownTimer.onFinish()
+                }
             }
         }
 
@@ -284,6 +300,12 @@ class MainActivity : AppCompatActivity() {
             } else {
                 wrongAns(option2)
             }
+            CoroutineScope(Dispatchers.IO).launch {
+                delay(1000L)
+                runOnUiThread {
+                    countDownTimer.onFinish()
+                }
+            }
         }
 
         option3.setOnClickListener {
@@ -292,6 +314,12 @@ class MainActivity : AppCompatActivity() {
                 correctAns(option3)
             } else {
                 wrongAns(option3)
+            }
+            CoroutineScope(Dispatchers.IO).launch {
+                delay(1000L)
+                runOnUiThread {
+                    countDownTimer.onFinish()
+                }
             }
         }
 
@@ -302,10 +330,15 @@ class MainActivity : AppCompatActivity() {
             } else {
                 wrongAns(option4)
             }
+            CoroutineScope(Dispatchers.IO).launch {
+                delay(1000L)
+                runOnUiThread {
+                    countDownTimer.onFinish()
+                }
+            }
         }
     }
 
-    // TODO: configure for WebView
     private fun onBackOverride() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -319,6 +352,16 @@ class MainActivity : AppCompatActivity() {
                     backToast?.show()
                 }
                 backPressedTime = System.currentTimeMillis()
+            }
+        })
+    }
+
+    private fun onBackOverrideWebView() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (webView.canGoBack()) {
+                    webView.goBack()
+                }
             }
         })
     }
