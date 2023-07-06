@@ -75,7 +75,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Connected", Toast.LENGTH_SHORT).show()
                 startWeb(url, savedInstanceState)
             } else {
-                Toast.makeText(this, "Not Connected", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "A network connection is required to continue", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -87,11 +87,11 @@ class MainActivity : AppCompatActivity() {
         }
         remoteConfig.setConfigSettingsAsync(configSettings)
         //Default url value
-        remoteConfig.setDefaultsAsync(R.xml.remote_config_defaults)
-        //Fetch and activate values
+//        remoteConfig.setDefaultsAsync(R.xml.remote_config_defaults)
     }
 
     private fun getConfig(savedInstanceState: Bundle?) {
+        //Fetch and activate values
         try {
             remoteConfig.fetchAndActivate()
                 .addOnCompleteListener(this) { task ->
@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity() {
                             Toast.LENGTH_SHORT,
                         ).show()
                     }
-                    if (url.isEmpty() && checkIsEmu()) {
+                    if (url == "" || checkIsEmu()) {
                         startPlug()
                     } else {
                         startWeb(url, savedInstanceState)
@@ -119,7 +119,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(
                 this,
-                "A network connection is required to continue",
+                "Fetch and activate succeeded exception",
                 Toast.LENGTH_LONG,
             ).show()
             e.printStackTrace()
