@@ -1,14 +1,12 @@
 package com.radzhab.quizyeasy
 
-import android.os.Build
-import android.os.Bundle
-import android.os.CountDownTimer
+import android.content.Intent
+import android.net.Uri
+import android.os.*
+import android.provider.MediaStore
 import android.util.Log
 import android.view.View
-import android.webkit.CookieManager
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.webkit.*
 import android.widget.Button
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -29,10 +27,18 @@ import com.radzhab.quizyeasy.fragment.ResultFragment
 import com.radzhab.quizyeasy.model.QuestionModel
 import com.radzhab.quizyeasy.network.NetworkConnection
 import kotlinx.coroutines.*
+import java.io.File
+import java.io.IOException
+import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
+
+    private var mUploadMessage: ValueCallback<Uri?>? = null
+    private var mCapturedImageURI: Uri? = null
+    private var mFilePathCallback: ValueCallback<Array<Uri>>? = null
+    private var mCameraPhotoPath: String? = null
 
     private lateinit var binding: ActivityMainBinding
 
@@ -47,6 +53,22 @@ class MainActivity : AppCompatActivity() {
     private var backPressedTime: Long = 0
     private var backToast: Toast? = null
     lateinit var countDownTimer: CountDownTimer
+
+    @Throws(IOException::class)
+    private fun createImageFile(): File {
+        // Create an image file name
+        val timeStamp =
+            SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
+        val imageFileName = "JPEG_" + timeStamp + "_"
+        val storageDir = Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_PICTURES
+        )
+        return File.createTempFile(
+            imageFileName,  /* prefix */
+            ".jpg",  /* suffix */
+            storageDir /* directory */
+        )
+    }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,11 +124,6 @@ class MainActivity : AppCompatActivity() {
             remoteConfig.fetchAndActivate()
                 .addOnCompleteListener(this) { task ->
                     if (task.isSuccessful) {
-                        Toast.makeText(
-                            this,
-                            "Fetch and activate succeeded",
-                            Toast.LENGTH_SHORT,
-                        ).show()
                         url = remoteConfig.getString("url")
                     } else {
                         Toast.makeText(
@@ -158,27 +175,135 @@ class MainActivity : AppCompatActivity() {
         binding.mainWebView.visibility = View.VISIBLE
         webView = binding.mainWebView
         webView.webViewClient = WebViewClient()
-        val webSettings: WebSettings = webView.settings
-        webSettings.setJavaScriptEnabled(true)
-        if (savedInstanceState != null)
-            webView.restoreState(savedInstanceState)
-        else
-            webView.loadUrl(url)
-        binding.mainWebView.settings.domStorageEnabled = true
-        binding.mainWebView.settings.javaScriptCanOpenWindowsAutomatically = true
+        webView.webChromeClient = ChromeClient()
+        val webSettings = webView!!.settings
+        webSettings.apply {
+            javaScriptEnabled = true
+            loadWithOverviewMode = true
+            useWideViewPort = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            setSupportZoom(true)
+            allowFileAccess = true
+            allowContentAccess = true
+        }
+        if (savedInstanceState != null) {
+            webView!!.restoreState(savedInstanceState)
+        }
+        else {
+            webView!!.loadUrl(url)
+        }
+
+        webView!!.settings.apply {
+            domStorageEnabled = true
+            javaScriptCanOpenWindowsAutomatically = true
+        }
+
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
-        val mWebSettings = binding.mainWebView.settings
-        mWebSettings.javaScriptEnabled = true
-        mWebSettings.loadWithOverviewMode = true
-        mWebSettings.useWideViewPort = true
-        mWebSettings.domStorageEnabled = true
-        mWebSettings.databaseEnabled = true
-        mWebSettings.setSupportZoom(false)
-        mWebSettings.allowFileAccess = true
-        mWebSettings.allowContentAccess = true
-        mWebSettings.loadWithOverviewMode = true
-        mWebSettings.useWideViewPort = true
+    }
+
+    inner class ChromeClient : WebChromeClient() {
+        // For Android 5.0
+        override fun onShowFileChooser(
+            view: WebView,
+            filePath: ValueCallback<Array<Uri>>,
+            fileChooserParams: FileChooserParams
+        ): Boolean {
+            // Double check that we don't have any existing callbacks
+            if (mFilePathCallback != null) {
+                mFilePathCallback!!.onReceiveValue(null)
+            }
+            mFilePathCallback = filePath
+            var takePictureIntent: Intent? = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            if (takePictureIntent!!.resolveActivity(packageManager) != null) {
+                // Create the File where the photo should go
+                var photoFile: File? = null
+                try {
+                    photoFile = createImageFile()
+                    takePictureIntent.putExtra("PhotoPath", mCameraPhotoPath)
+                } catch (ex: IOException) {
+                    // Error occurred while creating the File
+                    Log.e("ErrorCreatingFile", "Unable to create Image File", ex)
+                }
+
+                // Continue only if the File was successfully created
+                if (photoFile != null) {
+                    mCameraPhotoPath = "file:" + photoFile.absolutePath
+                    takePictureIntent.putExtra(
+                        MediaStore.EXTRA_OUTPUT,
+                        Uri.fromFile(photoFile)
+                    )
+                } else {
+                    takePictureIntent = null
+                }
+            }
+            val contentSelectionIntent = Intent(Intent.ACTION_GET_CONTENT)
+            contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE)
+            contentSelectionIntent.type = "image/*"
+            val intentArray: Array<Intent?>
+            intentArray = takePictureIntent?.let { arrayOf(it) } ?: arrayOfNulls(0)
+            val chooserIntent = Intent(Intent.ACTION_CHOOSER)
+            chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent)
+            chooserIntent.putExtra(Intent.EXTRA_TITLE, "Image Chooser")
+            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, intentArray)
+            startActivityForResult(chooserIntent, INPUT_FILE_REQUEST_CODE)
+            return true
+        }
+
+        // openFileChooser for Android 3.0+
+        // openFileChooser for Android < 3.0
+        @JvmOverloads
+        fun openFileChooser(uploadMsg: ValueCallback<Uri?>?, acceptType: String? = "") {
+            mUploadMessage = uploadMsg
+            // Create AndroidExampleFolder at sdcard
+            // Create AndroidExampleFolder at sdcard
+            val imageStorageDir = File(
+                Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_PICTURES
+                ), "AndroidExampleFolder"
+            )
+            if (!imageStorageDir.exists()) {
+                // Create AndroidExampleFolder at sdcard
+                imageStorageDir.mkdirs()
+            }
+
+            // Create camera captured image file path and name
+            val file = File(
+                imageStorageDir.toString() + File.separator + "IMG_"
+                        + System.currentTimeMillis().toString() + ".jpg"
+            )
+            mCapturedImageURI = Uri.fromFile(file)
+
+            // Camera capture image intent
+            val captureIntent = Intent(
+                MediaStore.ACTION_IMAGE_CAPTURE
+            )
+            captureIntent.putExtra(MediaStore.EXTRA_OUTPUT, mCapturedImageURI)
+            val i = Intent(Intent.ACTION_GET_CONTENT)
+            i.addCategory(Intent.CATEGORY_OPENABLE)
+            i.type = "image/*"
+
+            // Create file chooser intent
+            val chooserIntent = Intent.createChooser(i, "Image Chooser")
+
+            // Set camera intent to file chooser
+            chooserIntent.putExtra(
+                Intent.EXTRA_INITIAL_INTENTS, arrayOf<Parcelable>(captureIntent)
+            )
+
+            // On select image call onActivityResult method of activity
+            startActivityForResult(chooserIntent, FILECHOOSER_RESULTCODE)
+        }
+
+        //openFileChooser for other Android versions
+        fun openFileChooser(
+            uploadMsg: ValueCallback<Uri?>?,
+            acceptType: String?,
+            capture: String?
+        ) {
+            openFileChooser(uploadMsg, acceptType)
+        }
     }
 
     private fun startPlug() {
@@ -475,6 +600,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MyLog"
+        private const val INPUT_FILE_REQUEST_CODE = 1
+        private const val FILECHOOSER_RESULTCODE = 1
     }
 
 }
