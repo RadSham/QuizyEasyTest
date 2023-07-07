@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var backPressedTime: Long = 0
     private var backToast: Toast? = null
     lateinit var countDownTimer: CountDownTimer
+    var isCreated: Boolean = false
 
     @Throws(IOException::class)
     private fun createImageFile(): File {
@@ -80,7 +81,7 @@ class MainActivity : AppCompatActivity() {
         initFirebaseRemoteConfig()
         url = remoteConfig.getString("url")
 
-        if (url.isNotEmpty()) {
+        if (url.isNotEmpty() && !isCreated) {
             checkConnection(savedInstanceState)
         } else {
             getConfig(savedInstanceState)
@@ -95,15 +96,18 @@ class MainActivity : AppCompatActivity() {
     private fun checkConnection(savedInstanceState: Bundle?) {
         val networkConnection = NetworkConnection(applicationContext)
         networkConnection.observe(this) { isConnected ->
-            if (isConnected) {
-                Toast.makeText(this, "Connected", Toast.LENGTH_SHORT).show()
-                startWeb(url, savedInstanceState)
-            } else {
-                Toast.makeText(
-                    this,
-                    "A network connection is required to continue",
-                    Toast.LENGTH_SHORT
-                ).show()
+            if (!isCreated) {
+                if (isConnected) {
+                    Toast.makeText(this, "Connected", Toast.LENGTH_SHORT).show()
+                    startWeb(url, savedInstanceState)
+                } else {
+                    Toast.makeText(
+                        this,
+                        "A network connection is required to continue",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                isCreated = true
             }
         }
     }
@@ -304,6 +308,61 @@ class MainActivity : AppCompatActivity() {
         ) {
             openFileChooser(uploadMsg, acceptType)
         }
+    }
+
+    public override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            if (requestCode != INPUT_FILE_REQUEST_CODE || mFilePathCallback == null) {
+                super.onActivityResult(requestCode, resultCode, data)
+                return
+            }
+            var results: Array<Uri>? = null
+
+            // Check that the response is a good one
+            if (resultCode == RESULT_OK) {
+                if (data == null) {
+                    // If there is not data, then we may have taken a photo
+                    if (mCameraPhotoPath != null) {
+                        results = arrayOf(Uri.parse(mCameraPhotoPath))
+                    }
+                } else {
+                    val dataString = data.dataString
+                    if (dataString != null) {
+                        results = arrayOf(Uri.parse(dataString))
+                    }
+                }
+            }
+            mFilePathCallback!!.onReceiveValue(results)
+            mFilePathCallback = null
+        } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT) {
+            if (requestCode != FILECHOOSER_RESULTCODE || mUploadMessage == null) {
+                super.onActivityResult(requestCode, resultCode, data)
+                return
+            }
+            if (requestCode == FILECHOOSER_RESULTCODE) {
+                if (null == mUploadMessage) {
+                    return
+                }
+                var result: Uri? = null
+                try {
+                    result = if (resultCode != RESULT_OK) {
+                        null
+                    } else {
+
+                        // retrieve from the private variable if the intent is null
+                        if (data == null) mCapturedImageURI else data.data
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        applicationContext, "activity :$e",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                mUploadMessage!!.onReceiveValue(result)
+                mUploadMessage = null
+            }
+        }
+        return
     }
 
     private fun startPlug() {
