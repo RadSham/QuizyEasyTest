@@ -175,6 +175,7 @@ class MainActivity : AppCompatActivity() {
         println("displayWelcomeMessage")
     }
 
+    // https://gist.github.com/pamobo0609/1650a73d0478f5aeabc95f67f1457ba5
     private fun startWeb(url: String, savedInstanceState: Bundle?) {
         onBackOverrideWebView()
         binding.mainWebView.visibility = View.VISIBLE
