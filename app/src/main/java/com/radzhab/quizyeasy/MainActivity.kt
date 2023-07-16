@@ -1,6 +1,7 @@
 package com.radzhab.quizyeasy
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.*
 import android.provider.MediaStore
@@ -663,4 +664,8 @@ class MainActivity : AppCompatActivity() {
         private const val FILECHOOSER_RESULTCODE = 1
     }
 
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+    }
 }
